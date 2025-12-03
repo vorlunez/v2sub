@@ -100,7 +100,8 @@ def run(name, port):
         systemd.stop(existing_unit)
         config.update_config(node, port)
     if not systemd.is_active(existing_unit):
-        unit = systemd.start(["v2ray", "-config", config.V2RAY_CONFIG_FILE])
+        unit = systemd.start(["xray", "-config", config.V2RAY_CONFIG_FILE])
+        unit['unit'] = unit['unit'].split(';')[0].strip()
         utils.write_to_json(unit, systemd.SYSTEMD_UNIT)
 
 
