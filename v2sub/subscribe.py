@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import sys
+from urllib.parse import unquote
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 from v2sub.systemd import SYSTEMD_UNIT
@@ -73,6 +74,49 @@ def padding_base64(data):
         data += b'=' * (4 - missing_padding)
     return data
 
+def parse_vmess(node) -> dict:
+    node = utils.byte2str(node).replace("vmess://", "")
+    node = utils.str2byte(node)
+    node = utils.byte2str(base64.b64decode(padding_base64(node)))
+    node_json = json.loads(node)
+    node_json['protocol'] = 'vmess'
+    node_json['ps'] = 'vmess: ' + node_json['ps']
+    return node_json
+
+def parse_shadowsocks(node) -> dict:
+    node = utils.byte2str(node)
+    main_part = node[5:]
+    if "#" in main_part:
+        encoded_part = main_part.split("#", 1)[0]
+        remark_raw = main_part.split("#", 1)[1]
+        name = unquote(remark_raw)
+    else:
+        encoded_part = main_part
+        name = ""
+    encoded_part = main_part.split("#", 1)[0]
+
+    missing_padding = len(encoded_part) % 4
+    if missing_padding:
+        encoded_part += '=' * (4 - missing_padding)
+    
+    decoded_bytes = base64.b64decode(encoded_part)
+    decoded_str = decoded_bytes.decode('utf-8')
+    
+    if "@" not in decoded_str:
+        raise ValueError("Invalid SS format: missing '@'")
+    
+    method_pass, host_port = decoded_str.rsplit("@", 1)
+    method, password = method_pass.split(":", 1)
+    host, port_str = host_port.split(":", 1)
+
+    return {
+        "ps": "shadowsocks: " + name,
+        "protocol": "shadowsocks",
+        "add": host,
+        "port": int(port_str),
+        "method": method,
+        "password": password
+    }
 
 def parser_subscribe(url, name=DEFAULT_SUBSCRIBE):
     try:
@@ -85,13 +129,12 @@ def parser_subscribe(url, name=DEFAULT_SUBSCRIBE):
     nodes = base64.b64decode(padding_base64(resp.read())).splitlines()
     servers = []
     for node in nodes:
-        # Ignore non-vemss node
-        if b"vmess://" not in node:
-            continue
-        node = utils.byte2str(node).replace("vmess://", "")
-        node = utils.str2byte(node)
-        node = utils.byte2str(base64.b64decode(padding_base64(node)))
-        servers.append(json.loads(node))
+        if node.startswith(b"vmess://"):
+            node_info = parse_vmess(node)
+            servers.append(node_info)
+        elif node.startswith(b"ss://"):
+            node_info = parse_shadowsocks(node)
+            servers.append(node_info)
     all_servers = utils.read_from_json(SERVER_CONFIG)
     all_servers.update({name: servers})
     utils.write_to_json(all_servers, SERVER_CONFIG)
