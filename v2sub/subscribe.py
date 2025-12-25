@@ -2,7 +2,7 @@ import base64
 import json
 import os
 import sys
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 from v2sub.systemd import SYSTEMD_UNIT
@@ -14,7 +14,6 @@ from v2sub import DEFAULT_SUBSCRIBE
 from v2sub import SERVER_CONFIG
 from v2sub import SUBSCRIBE_CONFIG
 from v2sub import utils
-
 
 def init():
     if not os.path.exists(BASE_PATH):
@@ -83,34 +82,27 @@ def parse_vmess(node) -> dict:
     node_json['ps'] = 'vmess: ' + node_json['ps']
     return node_json
 
-def parse_shadowsocks(node) -> dict:
-    node = utils.byte2str(node)
-    main_part = node[5:]
-    if "#" in main_part:
-        encoded_part = main_part.split("#", 1)[0]
-        remark_raw = main_part.split("#", 1)[1]
-        name = unquote(remark_raw)
-    else:
-        encoded_part = main_part
-        name = ""
-    encoded_part = main_part.split("#", 1)[0]
+# match SIP002 rules
+def parse_shadowsocks(node: bytes) -> dict:
+    uri = node.decode('ascii')[5:].strip()
 
-    missing_padding = len(encoded_part) % 4
-    if missing_padding:
-        encoded_part += '=' * (4 - missing_padding)
-    
-    decoded_bytes = base64.b64decode(encoded_part)
-    decoded_str = decoded_bytes.decode('utf-8')
-    
-    if "@" not in decoded_str:
-        raise ValueError("Invalid SS format: missing '@'")
-    
-    method_pass, host_port = decoded_str.rsplit("@", 1)
-    method, password = method_pass.split(":", 1)
-    host, port_str = host_port.split(":", 1)
+    if '#' in uri:
+        main_part, remark_raw = uri.split('#', 1)
+        remark = unquote(remark_raw)
+    else:
+        main_part = uri
+        remark = ""
+
+    b64_part, host_port = main_part.rsplit('@', 1)
+
+    pad = '=' * (4 - len(b64_part) % 4)
+    decoded = base64.b64decode(b64_part + pad)
+    method, password = decoded.decode('utf-8').split(':', 1)
+
+    host, port_str = host_port.split(':', 1)
 
     return {
-        "ps": "shadowsocks: " + name,
+        "ps": "shadowsocks: " + remark,
         "protocol": "shadowsocks",
         "add": host,
         "port": int(port_str),
@@ -133,8 +125,12 @@ def parser_subscribe(url, name=DEFAULT_SUBSCRIBE):
             node_info = parse_vmess(node)
             servers.append(node_info)
         elif node.startswith(b"ss://"):
-            node_info = parse_shadowsocks(node)
-            servers.append(node_info)
+            try:
+                node_info = parse_shadowsocks(node)
+                servers.append(node_info)
+            except ValueError as e:
+                click.echo(f"Failed to parse {node}: {e}")
+                continue
     all_servers = utils.read_from_json(SERVER_CONFIG)
     all_servers.update({name: servers})
     utils.write_to_json(all_servers, SERVER_CONFIG)
