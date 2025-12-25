@@ -4,7 +4,7 @@ from typing import Iterable
 from v2sub import BASE_PATH
 import os
 
-SYSTEMD_UNIT = os.path.join(BASE_PATH, 'unit.json')
+SYSTEMD_UNIT = os.path.join(BASE_PATH, 'unit-{}.json')
 SYSTEMD_RUN_CMD = [
     "systemd-run",
     "--user",

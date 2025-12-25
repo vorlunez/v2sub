@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import click
 from simple_term_menu import TerminalMenu
+from pathlib import Path
 
 from v2sub import DEFAULT_SUBSCRIBE
 from v2sub import __version__
@@ -94,25 +95,31 @@ def run(name, port):
     menu = TerminalMenu(servers, title=name)
     index = menu.show()
     node = subscribe.get_node(index, name)
-    existing_unit = utils.read_from_json(systemd.SYSTEMD_UNIT).get("unit", "")
-    existing_config = utils.read_from_json(config.V2RAY_CONFIG_FILE)
+    existing_unit = utils.read_from_json(systemd.SYSTEMD_UNIT.format(port)).get("unit", "")
+    existing_config = utils.read_from_json(config.V2RAY_CONFIG_FILE.format(port))
     if existing_config != node:
         systemd.stop(existing_unit)
         config.update_config(node, port)
     if not systemd.is_active(existing_unit):
-        unit = systemd.start(["xray", "-config", config.V2RAY_CONFIG_FILE])
+        unit = systemd.start(["xray", "-config", config.V2RAY_CONFIG_FILE.format(port)])
         unit['unit'] = unit['unit'].split(';')[0].strip()
-        utils.write_to_json(unit, systemd.SYSTEMD_UNIT)
+        utils.write_to_json(unit, systemd.SYSTEMD_UNIT.format(port))
 
 
 @cli.command()
-def stop():
+@click.option("--port", type=click.INT, default=1080,
+              help="the local port you want to stop, default is 1080")
+def stop(port):
     """stop v2ray
     """
-    unit = utils.read_from_json(systemd.SYSTEMD_UNIT).get("unit", "")
+    unit_file = systemd.SYSTEMD_UNIT.format(port)
+    unit = utils.read_from_json(unit_file).get("unit", "")
     if systemd.is_active(unit):
         systemd.stop(unit)
     click.echo("Stopped")
+    file_path = Path(unit_file)
+    if file_path.exists():
+        file_path.unlink()
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 from v2sub import utils
 
-V2RAY_CONFIG_FILE = "/tmp/config.json"
+V2RAY_CONFIG_FILE = "/tmp/config-{}.json"
 
 
 def _get_settings_vmess(addr: str, port: int, id_: str) -> dict:
@@ -77,4 +77,4 @@ def _get_config(node: dict, client_port=1080) -> dict:
 
 def update_config(node: dict, client_port: int):
     v2ray_config = _get_config(node, client_port=client_port)
-    utils.write_to_json(v2ray_config, V2RAY_CONFIG_FILE)
+    utils.write_to_json(v2ray_config, V2RAY_CONFIG_FILE.format(client_port))
