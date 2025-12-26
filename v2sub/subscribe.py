@@ -194,6 +194,11 @@ def get_servers(name=DEFAULT_SUBSCRIBE, all_subs=False):
         click.echo("No servers found, please add and update subscribe first!")
         sys.exit(1)
     if all_subs:
-        return [node["ps"] for node in [sub for sub in all_servers]]
+        return sum(all_servers.values(), [])
     else:
-        return [node["ps"] for node in all_servers[name]]
+        return [node for node in all_servers[name]]
+
+
+def get_servers_ps(name=DEFAULT_SUBSCRIBE, all_subs=False):
+    all_servers = get_servers(name, all_subs)
+    return [node["ps"] for node in all_servers]

@@ -9,6 +9,7 @@ from v2sub import config
 from v2sub import subscribe
 from v2sub import systemd
 from v2sub import utils
+from v2sub import BASE_PATH
 
 
 @click.group()
@@ -88,38 +89,64 @@ def ping(name, index):
                    "provided, the default subscribe will be run.")
 @click.option("--port", type=click.INT, default=1080,
               help="the local port v2ray client listen on, default is 1080")
-def run(name, port):
+@click.option("--all", is_flag=True, default=False,
+              help="start all nodes in the subscribe, default is False")
+def run(name, port, all):
     """start v2ray with a selected node.
     """
-    servers = subscribe.get_servers(name)
-    menu = TerminalMenu(servers, title=name)
-    index = menu.show()
-    node = subscribe.get_node(index, name)
-    existing_unit = utils.read_from_json(systemd.SYSTEMD_UNIT.format(port)).get("unit", "")
-    existing_config = utils.read_from_json(config.V2RAY_CONFIG_FILE.format(port))
-    if existing_config != node:
-        systemd.stop(existing_unit)
-        config.update_config(node, port)
-    if not systemd.is_active(existing_unit):
+    def op(port):
         unit = systemd.start(["xray", "-config", config.V2RAY_CONFIG_FILE.format(port)])
         unit['unit'] = unit['unit'].split(';')[0].strip()
         utils.write_to_json(unit, systemd.SYSTEMD_UNIT.format(port))
 
+    if all:
+        all_servers = subscribe.get_servers(name, all_subs=True)
+        for node in all_servers:
+            config.update_config(node, port)
+            op(port)
+            port = port + 1
+        click.echo("Started all servers")
+        return
+
+    servers_ps = subscribe.get_servers_ps(name)
+    menu = TerminalMenu(servers_ps, title=name)
+    index = menu.show()
+    node = subscribe.get_node(index, name)
+    existing_unit = utils.read_from_json(systemd.SYSTEMD_UNIT.format(port)).get("unit", "")
+    existing_config = utils.read_from_json(config.V2RAY_CONFIG_FILE.format(port))
+
+    if existing_config != node:
+        systemd.stop(existing_unit)
+        config.update_config(node, port)
+    if not systemd.is_active(existing_unit):
+        op(port)
 
 @cli.command()
 @click.option("--port", type=click.INT, default=1080,
               help="the local port you want to stop, default is 1080")
-def stop(port):
+@click.option("--all", is_flag=True, default=False,
+              help="whether to stop all running instances, default is False")
+def stop(port, all):
     """stop v2ray
     """
-    unit_file = systemd.SYSTEMD_UNIT.format(port)
-    unit = utils.read_from_json(unit_file).get("unit", "")
-    if systemd.is_active(unit):
-        systemd.stop(unit)
-    click.echo("Stopped")
-    file_path = Path(unit_file)
-    if file_path.exists():
-        file_path.unlink()
+    def op(unit_file):
+        unit = utils.read_from_json(unit_file).get("unit", "")
+        if systemd.is_active(unit):
+            systemd.stop(unit)
+        click.echo("Stopped")
+        file_path = Path(unit_file)
+        if file_path.exists():
+            file_path.unlink()
+
+    if all:
+        unit_json_files = list(Path(BASE_PATH).expanduser().glob("unit*.json"))
+        for unit_json_file in unit_json_files:
+            op(unit_json_file)
+        click.echo("Stopped all running instances.")
+        return
+    else:
+        unit_file = systemd.SYSTEMD_UNIT.format(port)
+        op(unit_file)
 
 
 if __name__ == '__main__':

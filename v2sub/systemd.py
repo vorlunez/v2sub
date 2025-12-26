@@ -1,4 +1,3 @@
-
 from subprocess import CalledProcessError, run
 from typing import Iterable
 from v2sub import BASE_PATH
@@ -15,10 +14,10 @@ SYSTEMD_RUN_CMD = [
 
 
 def start(cmd: Iterable) -> dict:
-    SYSTEMD_RUN_CMD.extend(cmd)
+    full_cmd = SYSTEMD_RUN_CMD + list(cmd)
 
     proc = run(
-        SYSTEMD_RUN_CMD,
+        full_cmd,
         check=True,
         capture_output=True,
     )
