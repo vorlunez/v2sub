@@ -2,6 +2,7 @@ import json
 import re
 import sys
 from subprocess import Popen, PIPE
+from concurrent.futures import ThreadPoolExecutor
 
 import click
 
@@ -61,6 +62,9 @@ def _ping(ip, times=3, timeout=1, interval=0.2):
         return float(s.group(2))
     return -1
 
+def _ping_worker(node):
+    delay = _ping(node['add'])
+    return delay
 
 def ping(name=DEFAULT_SUBSCRIBE, index=None, all_servers=None):
     if all_servers is None:
@@ -75,6 +79,7 @@ def ping(name=DEFAULT_SUBSCRIBE, index=None, all_servers=None):
         delay = _ping(node['add'])
         echo_node(index, node, delay=delay)
     else:
+        with ThreadPoolExecutor(max_workers=10) as executor:
+                results = list(executor.map(_ping_worker, servers))
         for index, node in enumerate(servers, start=1):
-            delay = _ping(node['add'])
-            echo_node(index, node, delay=delay)
+            echo_node(index, node, delay=results[index-1])
