@@ -91,7 +91,9 @@ def ping(name, index):
               help="the local port v2ray client listen on, default is 1080")
 @click.option("--all", is_flag=True, default=False,
               help="start all nodes in the subscribe, default is False")
-def run(name, port, all):
+@click.option("--index", type=click.INT, default=-1,
+              help="start the specific node by index")
+def run(name, port, all, index):
     """start v2ray with a selected node.
     """
     def op(port):
@@ -110,7 +112,8 @@ def run(name, port, all):
 
     servers_ps = subscribe.get_servers_ps(name)
     menu = TerminalMenu(servers_ps, title=name)
-    index = menu.show()
+    if index == -1:
+        index = menu.show()
     node = subscribe.get_node(index, name)
     existing_unit = utils.read_from_json(systemd.SYSTEMD_UNIT.format(port)).get("unit", "")
     existing_config = utils.read_from_json(config.V2RAY_CONFIG_FILE.format(port))
