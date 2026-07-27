@@ -2,7 +2,7 @@ import base64
 import json
 import os
 import sys
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 from v2sub.systemd import SYSTEMD_UNIT
@@ -82,6 +82,42 @@ def parse_vmess(node) -> dict:
     node_json['ps'] = 'vmess: ' + node_json['ps']
     return node_json
 
+
+def parse_vless(node: bytes) -> dict:
+    """Parse a VLESS share URI into the node format used by v2sub."""
+    uri = node.decode('utf-8').strip()
+    parsed = urlsplit(uri)
+    if parsed.scheme != 'vless' or not parsed.username:
+        raise ValueError("Invalid VLESS URI: missing user id")
+    if not parsed.hostname or parsed.port is None:
+        raise ValueError("Invalid VLESS URI: missing server or port")
+
+    query = {
+        key: values[0]
+        for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
+    }
+    node_info = {
+        "ps": "vless: " + unquote(parsed.fragment),
+        "protocol": "vless",
+        "add": parsed.hostname,
+        "port": parsed.port,
+        "id": unquote(parsed.username),
+        "encryption": query.get("encryption", "none"),
+        "network": query.get("type", "tcp"),
+        "security": query.get("security", "none"),
+    }
+
+    optional_params = (
+        "flow", "sni", "fp", "alpn", "allowInsecure",
+        "host", "path", "serviceName", "authority",
+        "headerType", "seed", "pbk", "sid", "spx",
+    )
+    for param in optional_params:
+        if param in query:
+            node_info[param] = query[param]
+    return node_info
+
+
 # match SIP002 rules
 def parse_shadowsocks(node: bytes) -> dict:
     uri = node.decode('ascii')[5:].strip()
@@ -124,6 +160,13 @@ def parser_subscribe(url, name=DEFAULT_SUBSCRIBE):
         if node.startswith(b"vmess://"):
             node_info = parse_vmess(node)
             servers.append(node_info)
+        elif node.startswith(b"vless://"):
+            try:
+                node_info = parse_vless(node)
+                servers.append(node_info)
+            except ValueError as e:
+                click.echo(f"Failed to parse VLESS node: {e}")
+                continue
         elif node.startswith(b"ss://"):
             try:
                 node_info = parse_shadowsocks(node)
